@@ -1,0 +1,65 @@
+# Publish Slicerdome to GitHub Pages: the page from this repository, plus
+# - SlicerWeb, served from the same origin so the page can reach its Python: an unmodified copy
+#   of its published build (branch deploy/latest of lassoan/slicerweb-app), with its license;
+# - the search index, from this repository's release named in INDEX_RELEASE.
+name: Publish to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+env:
+  INDEX_RELEASE: index-2026-11-07
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: The page
+        run: |
+          mkdir _site
+          cp -r index.html src static-index bench LICENSE README.md _site/
+
+      - name: SlicerWeb
+        run: |
+          git clone --depth 1 --branch deploy/latest https://github.com/lassoan/slicerweb-app.git slicerweb
+          rm -rf slicerweb/.git
+          curl -fsSL https://raw.githubusercontent.com/lassoan/SlicerWeb/main/LICENSE -o slicerweb/SLICERWEB-LICENSE.txt
+          mv slicerweb _site/slicerweb
+          cat _site/slicerweb/build-info.json 2>/dev/null || true
+
+      - name: The search index
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "$INDEX_RELEASE" --repo "$GITHUB_REPOSITORY" --pattern index-bundle.tar.gz
+          mkdir _site/bundle
+          tar -xzf index-bundle.tar.gz -C _site/bundle
+          du -sh _site _site/slicerweb _site/bundle
+
+      - uses: actions/configure-pages@v6
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5
