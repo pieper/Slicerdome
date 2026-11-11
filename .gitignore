@@ -1,0 +1,18 @@
+# The search index (a release asset) and SlicerWeb (fetched by the dev server or the Pages workflow)
+bundle/
+index-bundle.tar.gz
+slicerweb/
+_site/
+
+# Eval outputs, Chrome profiles, logs
+*.log
+results*.json
+chrome-*/
+
+# Keys must never be committed: the page keeps them in the browser only
+.env
+*.key
+*-key
+
+node_modules/
+.DS_Store

@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Slicerdome</title>
+<style>
+  :root {
+    --bg: #f7f7f5; --panel: #ffffff; --ink: #1d1f22; --muted: #6a6f76; --line: #e2e2de;
+    --accent: #2f6fde; --accent-ink: #fff; --code-bg: #f1f1ee; --ok: #2b8a3e; --err: #c92a2a; --warn-bg: #fff4d6; --warn-ink: #6b4e00;
+    --user-bg: #e8effc;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #17181a; --panel: #1f2023; --ink: #e8e8e6; --muted: #9a9ea5; --line: #33353a;
+      --accent: #6b9cff; --accent-ink: #0d1424; --code-bg: #2a2c30; --ok: #69db7c; --err: #ff8787; --warn-bg: #3a3218; --warn-ink: #f3d98b;
+      --user-bg: #253049;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { background: var(--bg); color: var(--ink); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; display: flex; flex-direction: column; }
+  header { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-bottom: 1px solid var(--line); background: var(--panel); flex-wrap: wrap; }
+  header h1 { font-size: 15px; margin: 0 8px 0 0; font-weight: 600; }
+  select, input, textarea, button { font: inherit; color: inherit; }
+  select, input[type=text], input[type=password], input[type=url], input[type=number] { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; }
+  button { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 5px 10px; cursor: pointer; }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  button:disabled { opacity: .5; cursor: default; }
+  #status { color: var(--muted); font-size: 12px; margin-left: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 45vw; }
+  #spend { font-size: 12px; white-space: nowrap; padding: 2px 8px; border: 1px solid var(--line); border-radius: 10px; cursor: help; font-variant-numeric: tabular-nums; }
+  .request-total { border-top: 1px dashed var(--line); padding-top: 4px; }
+  main { flex: 1; display: flex; min-height: 0; }
+  #chat { width: 460px; min-width: 300px; max-width: 70vw; resize: horizontal; overflow: hidden; display: flex; flex-direction: column; border-right: 1px solid var(--line); background: var(--panel); }
+  #notice { display: none; padding: 6px 12px; font-size: 12px; background: var(--warn-bg); color: var(--warn-ink); border-bottom: 1px solid var(--line); }
+  #log { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+  .msg { max-width: 100%; overflow-wrap: anywhere; }
+  .msg.user { align-self: flex-end; background: var(--user-bg); padding: 8px 12px; border-radius: 12px 12px 2px 12px; max-width: 90%; white-space: pre-wrap; }
+  .msg.assistant p { margin: 0 0 6px; }
+  .msg.error { color: var(--err); }
+  .msg .meta { color: var(--muted); font-size: 11px; margin-top: 2px; }
+  pre { background: var(--code-bg); padding: 8px; border-radius: 6px; overflow-x: auto; margin: 4px 0; font-size: 12px; white-space: pre-wrap; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+  :not(pre) > code { background: var(--code-bg); padding: 1px 4px; border-radius: 4px; }
+  details.tool, details.think { border: 1px solid var(--line); border-radius: 8px; padding: 4px 8px; font-size: 13px; }
+  details.tool summary, details.think summary { cursor: pointer; color: var(--muted); }
+  details.tool .ok { color: var(--ok); } details.tool .bad { color: var(--err); }
+  .label { color: var(--muted); font-size: 11px; margin-top: 4px; }
+  #composer { border-top: 1px solid var(--line); padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+  #input { width: 100%; resize: vertical; min-height: 60px; max-height: 40vh; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }
+  #composer .row { display: flex; gap: 6px; align-items: center; }
+  #composer .row .spacer { flex: 1; }
+  #slicer { flex: 1; border: 0; background: #000; min-width: 0; }
+  dialog { border: 1px solid var(--line); border-radius: 10px; background: var(--panel); color: var(--ink); width: min(640px, calc(100vw - 32px)); padding: 16px; }
+  dialog::backdrop { background: rgba(0,0,0,.35); }
+  dialog h2 { margin: 0 0 8px; font-size: 16px; }
+  dialog fieldset { border: 1px solid var(--line); border-radius: 8px; margin: 0 0 10px; padding: 8px 10px; }
+  dialog legend { font-weight: 600; padding: 0 4px; }
+  dialog label { display: grid; grid-template-columns: 90px 1fr; gap: 8px; align-items: center; margin: 4px 0; }
+  dialog label input, dialog label select { width: 100%; }
+  dialog label input[type=checkbox] { width: auto; }
+  dialog .help { color: var(--muted); font-size: 12px; margin: 2px 0 4px; }
+  .help-btn { width: 22px; height: 22px; padding: 0; border-radius: 50%; font-size: 12px; font-weight: 600; margin-left: 4px; vertical-align: 1px; }
+  .help-btn.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .help-panel { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px; margin: 4px 0 8px; font-size: 13px; max-height: 45vh; overflow-y: auto; }
+  .help-panel ol, .help-panel ul { padding-left: 20px; margin: 4px 0; }
+  .help-panel li { margin: 3px 0; }
+  .help-panel h4 { margin: 8px 0 2px; font-size: 13px; }
+  .help-panel p { margin: 4px 0; }
+  dialog .buttons { display: flex; justify-content: flex-end; gap: 8px; }
+  dialog .buttons .help { margin: 0 auto 0 0; align-self: center; }
+  dialog a { color: var(--accent); }
+  #modelsDialog { width: min(920px, calc(100vw - 32px)); }
+  #mpSearch { width: 100%; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; }
+  .mp-filters { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; margin: 8px 0; }
+  .mp-filters label { display: inline-flex; gap: 4px; margin: 0; align-items: center; white-space: nowrap; }
+  #mpList { max-height: 55vh; overflow-y: auto; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+  .mp-row { display: flex; gap: 10px; align-items: center; padding: 8px 4px; border-bottom: 1px solid var(--line); }
+  .mp-row:last-child { border-bottom: 0; }
+  .mp-row.current { background: var(--user-bg); }
+  .mp-main { flex: 1; min-width: 0; }
+  .mp-maker { color: var(--muted); }
+  .mp-badge { display: inline-block; font-size: 11px; padding: 0 6px; margin-left: 4px; border: 1px solid var(--line); border-radius: 9px; color: var(--muted); }
+  .mp-facts { font-size: 12px; margin-top: 2px; }
+  .mp-desc { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
+  .mp-slicer { font-size: 12px; margin-top: 3px; }
+  .sd-link { font-size: 12px; padding: 1px 8px; border-radius: 10px; color: var(--accent); border-color: var(--accent); background: transparent; }
+  #scoreDialog { width: min(980px, calc(100vw - 32px)); }
+  #sdBody { max-height: 70vh; overflow-y: auto; }
+  .sd-run { border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; margin: 8px 0; }
+  .sd-run > summary { cursor: pointer; }
+  .sd-note { color: var(--muted); font-size: 12px; margin: 4px 0 8px; }
+  .sd-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; margin-bottom: 10px; }
+  .sd-tile { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+  .sd-value { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .sd-label { color: var(--muted); font-size: 12px; }
+  .sd-strip { display: flex; flex-wrap: wrap; gap: 3px; margin-bottom: 10px; }
+  .sd-cell { width: 18px; height: 18px; border-radius: 3px; display: inline-block; }
+  .sd-cell.ok, .sd-task.ok .sd-mark { background: var(--ok); color: var(--panel); }
+  .sd-cell.bad, .sd-task.bad .sd-mark { background: var(--err); color: var(--panel); }
+  .sd-task { border-top: 1px solid var(--line); padding: 4px 0; }
+  .sd-task > summary { cursor: pointer; display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+  .sd-mark { display: inline-block; width: 18px; text-align: center; border-radius: 3px; font-size: 12px; }
+  .sd-name { font-weight: 600; }
+  .sd-outcome { color: var(--muted); }
+  .sd-meta { color: var(--muted); font-size: 12px; margin-left: auto; font-variant-numeric: tabular-nums; }
+  .sd-body { padding: 4px 0 6px 26px; font-size: 13px; }
+  .sd-body p { margin: 4px 0; }
+  @media (max-width: 760px) {
+    main { flex-direction: column; }
+    #chat { width: 100%; max-width: none; resize: none; height: 55vh; border-right: 0; border-bottom: 1px solid var(--line); }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Slicerdome</h1>
+  <select id="provider" title="Which model answers"></select>
+  <button id="load" title="Download and start the local model">Load model</button>
+  <button id="models" title="Find and pick a model from OpenRouter">Models</button>
+  <button id="settings">Settings</button>
+  <span id="status">Starting…</span>
+  <span id="spend" title="Money spent on model calls since this tab was opened">$0.0000 this session</span>
+</header>
+<main>
+  <section id="chat">
+    <div id="notice"></div>
+    <div id="log"></div>
+    <div id="composer">
+      <textarea id="input" placeholder="Ask about 3D Slicer, or ask it to do something with the loaded data…"></textarea>
+      <div class="row">
+        <button id="new">New chat</button>
+        <button id="download" title="Save this conversation, with tool calls and timings, as JSON">Save transcript</button>
+        <span class="spacer"></span>
+        <button id="stop" disabled>Stop</button>
+        <button id="send" class="primary">Send</button>
+      </div>
+    </div>
+  </section>
+  <iframe id="slicer" title="3D Slicer"></iframe>
+</main>
+
+<dialog id="settingsDialog">
+  <form method="dialog" id="settingsForm">
+    <h2>Settings</h2>
+    <fieldset>
+      <legend>Claude (Anthropic) <button type="button" class="help-btn" data-help="claude" title="How to get a key">?</button></legend>
+      <div class="help-panel" data-help-panel="claude" hidden></div>
+      <div class="help">Create a key at <a href="https://platform.claude.com/settings/keys" target="_blank" rel="noopener">platform.claude.com/settings/keys</a>. It is kept in this browser and sent only to api.anthropic.com.</div>
+      <label><span>API key</span><input type="password" id="claudeKey" autocomplete="off" placeholder="sk-ant-…"></label>
+      <label><span>Effort</span><select id="claudeEffort">
+        <option value="">model default</option>
+        <option value="low">low (cheapest, quickest)</option>
+        <option value="medium">medium</option>
+        <option value="high">high</option>
+      </select></label>
+      <div class="buttons"><span id="claudeTestResult" class="help"></span><button type="button" id="claudeTest">Test key</button></div>
+    </fieldset>
+    <fieldset>
+      <legend>Agent <button type="button" class="help-btn" data-help="agent" title="What these settings do">?</button></legend>
+      <div class="help-panel" data-help-panel="agent" hidden></div>
+      <label><span>Think first</span><span><input type="checkbox" id="thinking"> local models reason before each step (better, much slower)</span></label>
+      <label><span>Max steps</span><input type="number" id="maxSteps" min="1" max="40"></label>
+      <label><span>Cost limit</span><span><input type="number" id="costLimit" min="0" step="0.05" style="width: 6em"> US$ per request, for Claude and OpenRouter (0 = no limit)</span></label>
+      <label><span>Help</span><select id="assist">
+        <option value="local">for local models: add examples, search errors, stop loops</option>
+        <option value="all">for all models</option>
+        <option value="none">off</option>
+      </select></label>
+    </fieldset>
+    <div id="remoteFields"></div>
+    <p class="help">Keys are kept only in this browser (localStorage) and sent only to the provider they belong to.</p>
+    <div class="buttons"><button value="cancel">Cancel</button><button value="save" class="primary">Save</button></div>
+  </form>
+</dialog>
+
+<dialog id="modelsDialog">
+  <form method="dialog">
+    <h2>OpenRouter models</h2>
+    <input type="search" id="mpSearch" placeholder="Search by name, maker or description (for example: qwen coder)" autocomplete="off">
+    <div class="mp-filters">
+      <select id="mpMaker"><option value="">All makers</option></select>
+      <select id="mpWeights">
+        <option value="">Open or closed weights</option>
+        <option value="open">Open weights (can be run yourself)</option>
+        <option value="closed">Closed weights</option>
+      </select>
+      <select id="mpPrice">
+        <option value="">Any price</option>
+        <option value="1">Output up to $1 per million tokens</option>
+        <option value="5">Output up to $5 per million tokens</option>
+        <option value="free">Free (rate limited)</option>
+      </select>
+      <select id="mpSort" title="Order">
+        <option value="popular">Most used on OpenRouter</option>
+        <option value="easy">Slicer easy tasks passed</option>
+        <option value="hard">Slicer hard tasks passed</option>
+        <option value="coding">Coding score</option>
+        <option value="agentic">Agentic score</option>
+        <option value="intelligence">Intelligence score</option>
+        <option value="cheapest">Cheapest</option>
+        <option value="fastest">Fastest</option>
+        <option value="newest">Newest</option>
+      </select>
+      <label><input type="checkbox" id="mpCoding"> Most used for coding</label>
+      <label><input type="checkbox" id="mpFast"> Fast</label>
+      <label><input type="checkbox" id="mpImages"> Reads images</label>
+      <label><input type="checkbox" id="mpTested"> Tested on Slicer tasks</label>
+    </div>
+    <div id="mpList"></div>
+    <p class="help">Prices are US$ per million tokens, input / output, as OpenRouter lists them (some hosts charge less). "Used for coding" is
+      OpenRouter's top 20 for programming; "fast" is the top third by throughput; scores are
+      <a href="https://artificialanalysis.ai" target="_blank" rel="noopener">Artificial Analysis</a> indexes.
+      Slicer tasks are this page's own evaluation (bench/), where a model has been run on it.</p>
+    <div class="buttons"><span id="mpCount" class="help"></span><button value="close">Close</button></div>
+  </form>
+</dialog>
+
+<dialog id="scoreDialog">
+  <form method="dialog">
+    <h2 id="sdTitle">Slicer tasks</h2>
+    <div id="sdBody"></div>
+    <div class="buttons"><button value="close">Close</button></div>
+  </form>
+</dialog>
+
+<script type="module" src="./src/app.js"></script>
+</body>
+</html>
