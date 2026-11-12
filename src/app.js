@@ -8,9 +8,13 @@ import { CLAUDE_MODELS, ClaudeProvider } from "./claude.js";
 import { hasWebGPU, LOCAL_MODELS } from "./local-llm.js";
 import { HELP } from "./help.js";
 import { openModelPicker } from "./models.js";
+import { openBenchmarks } from "./bench.js";
+import { breakdown, defineUsCash, describe } from "./us-cash.js";
 import { finishOpenRouterSignIn, listModels, LocalProvider, openRouterSignIn, RemoteProvider, REMOTE_PRESETS } from "./providers.js";
 import { SlicerBridge } from "./slicer.js";
 import { makeRetriever, makeTools } from "./tools.js";
+
+defineUsCash(); // <us-cash> in the toolbar
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -49,7 +53,10 @@ const settings = loadSettings();
 // ---------------------------------------------------------------------------------------------
 // Status line, rendering
 
-const setStatus = (text) => ($("status").textContent = text);
+const setStatus = (text) => {
+  $("status").textContent = text;
+  $("status").title = text; // the toolbar may cut it short
+};
 
 function escapeHtml(s) {
   return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
@@ -224,9 +231,14 @@ const money = (x) => `$${x < 1 ? x.toFixed(4) : x.toFixed(2)}`;
 
 function showSpend() {
   const el = $("spend");
-  el.textContent = `${money(spend.session)} this session${spend.unknown ? "+" : ""}`;
+  // The toolbar shows the amount as the fewest US bills and coins (a part of a penny as a pie).
+  $("spendCash").amount = spend.session;
+  $("spendMore").hidden = !spend.unknown;
+  const total = `Spent this session: ${money(spend.session)}${spend.unknown ? "+" : ""}` +
+    (spend.session > 0 ? ` (${describe(breakdown(spend.session))})` : "");
+  el.setAttribute("aria-label", total);
   const lines = Object.entries(spend.byModel).sort((a, b) => b[1] - a[1]).map(([m, c]) => `${m}: ${money(c)}`);
-  el.title = [`This chat: ${money(spend.chat)}`, ...lines,
+  el.title = [total, `This chat: ${money(spend.chat)}`, ...lines,
     "Since this tab was opened. Claude costs are estimated from list prices; OpenRouter reports what it charged.",
     ...(spend.unknown ? ["+ some replies came from a provider that does not report cost."] : [])].join("\n");
   try {
@@ -470,6 +482,7 @@ $("models").onclick = () => openModelPicker({
     if (!settings.remote.openrouter.apiKey) addEl("error", "Add your OpenRouter API key in Settings to use this model.");
   },
 });
+$("bench").onclick = () => openBenchmarks();
 $("load").onclick = () => ensureLoaded(currentProvider()).catch((e) => addEl("error", escapeHtml(String(e.message ?? e))));
 $("send").onclick = () => send();
 $("stop").onclick = () => running?.controller.abort();

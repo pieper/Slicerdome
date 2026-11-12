@@ -7,13 +7,26 @@ const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<
 const money = (x) => (x == null ? "?" : x === 0 ? "$0" : x < 0.01 ? `$${x.toFixed(4)}` : x < 1 ? `$${x.toFixed(3)}` : `$${x.toFixed(2)}`);
 const duration = (s) => (s < 90 ? `${Math.round(s)} s` : s < 5400 ? `${Math.round(s / 60)} min` : `${(s / 3600).toFixed(1)} h`);
 
-/** Groups of runs the picker shows and sorts by: easy and hard tasks at the usual 12 steps, then other step limits. */
+let scores = null; // promise, fetched once per page load
+
+/** This page's evaluation results (bench/scores.json). */
+export function loadScores(url = "./bench/scores.json") {
+  scores ??= fetch(url).then((r) => {
+    if (!r.ok) throw new Error(`${url} answered ${r.status}`);
+    return r.json();
+  });
+  scores.catch(() => (scores = null)); // try again next time
+  return scores;
+}
+
+/** Groups of runs the picker and the Benchmarks dialog show: easy and hard tasks at the usual 12 steps, then other step limits. */
 export function summarize(entry) {
   const groups = new Map();
   for (const r of entry?.runs ?? []) {
     const key = `${r.set}:${r.maxSteps}`;
-    const g = groups.get(key) ?? { key, set: r.set, maxSteps: r.maxSteps, passed: 0, n: 0, cost: 0, seconds: 0, runs: 0 };
+    const g = groups.get(key) ?? { key, set: r.set, maxSteps: r.maxSteps, passed: 0, n: 0, cost: 0, seconds: 0, steps: 0, failed: 0, runs: 0 };
     g.passed += r.passed; g.n += r.n; g.cost += r.cost; g.seconds += r.seconds; g.runs += 1;
+    for (const t of r.tasks ?? []) { g.steps += t.steps ?? 0; g.failed += t.failedCalls ?? 0; }
     groups.set(key, g);
   }
   return [...groups.values()].sort((a, b) => (a.set === b.set ? a.maxSteps - b.maxSteps : a.set === "basic" ? -1 : 1));

@@ -6,7 +6,8 @@
 //   node bench/scores.mjs results1.json results2.json ... > bench/scores.json
 //
 // Claude models run through the Anthropic API are listed under their OpenRouter ids. Runs of
-// models in the browser (local:) are left out: the picker lists OpenRouter models.
+// models in the browser (local:) are left out: the picker lists OpenRouter models. Each model's
+// name, maker and whether its weights are open come from OpenRouter's public model list.
 import { readFileSync } from "node:fs";
 import { TASKS as BASIC } from "./tasks.mjs";
 import { TASKS as HARD } from "./tasks-hard.mjs";
@@ -67,9 +68,25 @@ for (const file of process.argv.slice(2)) {
 }
 for (const runs of Object.values(models)) runs.sort((a, b) => (a.set === b.set ? a.maxSteps - b.maxSteps || a.date.localeCompare(b.date) : a.set === "basic" ? -1 : 1));
 
+/** Name, maker and open weights for each model id, from OpenRouter's public list (none if offline). */
+async function modelInfo() {
+  try {
+    const r = await fetch("https://openrouter.ai/api/v1/models");
+    if (!r.ok) throw new Error(`OpenRouter answered ${r.status}`);
+    return new Map((await r.json()).data.map((m) => {
+      const [maker, ...rest] = m.name.includes(": ") ? m.name.split(": ") : [m.id.split("/")[0], m.name];
+      return [m.id, { name: rest.join(": "), maker, open: !!m.hugging_face_id }];
+    }));
+  } catch (e) {
+    console.error(`No model names: ${e.message}`);
+    return new Map();
+  }
+}
+const info = await modelInfo();
+
 const describe = (list) => list.map((t) => ({ id: t.id, prompt: t.prompt, ...(t.source ? { source: t.source } : {}) }));
 console.log(JSON.stringify({
   generated: new Date().toISOString().slice(0, 10),
   sets: { basic: { label: "easy", tasks: describe(BASIC) }, hard: { label: "hard", tasks: describe(HARD) } },
-  models: Object.fromEntries(Object.entries(models).map(([id, runs]) => [id, { runs }])),
+  models: Object.fromEntries(Object.entries(models).map(([id, runs]) => [id, { ...info.get(id), runs }])),
 }));

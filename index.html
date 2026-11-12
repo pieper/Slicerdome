@@ -9,12 +9,14 @@
     --bg: #f7f7f5; --panel: #ffffff; --ink: #1d1f22; --muted: #6a6f76; --line: #e2e2de;
     --accent: #2f6fde; --accent-ink: #fff; --code-bg: #f1f1ee; --ok: #2b8a3e; --err: #c92a2a; --warn-bg: #fff4d6; --warn-ink: #6b4e00;
     --user-bg: #e8effc;
+    --series-1: #2a78d6; --series-2: #eb6834; --axis: #c3c2b7; --meter-track: #cde2fb;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
       --bg: #17181a; --panel: #1f2023; --ink: #e8e8e6; --muted: #9a9ea5; --line: #33353a;
       --accent: #6b9cff; --accent-ink: #0d1424; --code-bg: #2a2c30; --ok: #69db7c; --err: #ff8787; --warn-bg: #3a3218; --warn-ink: #f3d98b;
       --user-bg: #253049;
+      --series-1: #3987e5; --series-2: #d95926; --axis: #4a4c52; --meter-track: #104281;
     }
   }
   * { box-sizing: border-box; }
@@ -22,13 +24,14 @@
   body { background: var(--bg); color: var(--ink); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; display: flex; flex-direction: column; }
   header { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-bottom: 1px solid var(--line); background: var(--panel); flex-wrap: wrap; }
   header h1 { font-size: 15px; margin: 0 8px 0 0; font-weight: 600; }
+  header select { max-width: 100%; min-width: 0; }
   select, input, textarea, button { font: inherit; color: inherit; }
   select, input[type=text], input[type=password], input[type=url], input[type=number] { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; }
   button { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 5px 10px; cursor: pointer; }
   button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
   button:disabled { opacity: .5; cursor: default; }
-  #status { color: var(--muted); font-size: 12px; margin-left: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 45vw; }
-  #spend { font-size: 12px; white-space: nowrap; padding: 2px 8px; border: 1px solid var(--line); border-radius: 10px; cursor: help; font-variant-numeric: tabular-nums; }
+  #status { color: var(--muted); font-size: 12px; margin-left: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1 1 0; min-width: 8em; text-align: right; }
+  #spend { display: inline-flex; align-items: center; gap: 3px; font-size: 12px; white-space: nowrap; padding: 2px 6px; border: 1px solid var(--line); border-radius: 12px; cursor: help; }
   .request-total { border-top: 1px dashed var(--line); padding-top: 4px; }
   main { flex: 1; display: flex; min-height: 0; }
   #chat { width: 460px; min-width: 300px; max-width: 70vw; resize: horizontal; overflow: hidden; display: flex; flex-direction: column; border-right: 1px solid var(--line); background: var(--panel); }
@@ -106,6 +109,50 @@
   .sd-meta { color: var(--muted); font-size: 12px; margin-left: auto; font-variant-numeric: tabular-nums; }
   .sd-body { padding: 4px 0 6px 26px; font-size: 13px; }
   .sd-body p { margin: 4px 0; }
+  #benchDialog { width: min(1060px, calc(100vw - 32px)); }
+  .bn-controls { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin: 8px 0; }
+  dialog .bn-controls label { display: inline-flex; gap: 6px; margin: 0; align-items: center; white-space: nowrap; }
+  dialog .bn-controls label select { width: auto; }
+  .bn-view { display: inline-flex; }
+  .bn-view button { border-radius: 0; }
+  .bn-view button:first-child { border-radius: 6px 0 0 6px; }
+  .bn-view button:last-child { border-radius: 0 6px 6px 0; margin-left: -1px; }
+  .bn-view button[aria-pressed=true] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  #bnTable { max-height: 62vh; overflow: auto; border-top: 1px solid var(--line); }
+  .bn-table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  .bn-table th, .bn-table td { padding: 6px 8px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .bn-table th:first-child, .bn-table td:first-child { text-align: left; white-space: normal; min-width: 150px; }
+  .bn-table thead th { position: sticky; top: 0; z-index: 1; background: var(--panel); vertical-align: bottom; }
+  .bn-table th button { border: 0; background: none; padding: 0; font-weight: 600; text-align: inherit; white-space: normal; color: var(--muted); }
+  .bn-table th[aria-sort] button { color: var(--ink); }
+  .bn-table td.best { font-weight: 700; }
+  .bn-model { border: 0; background: none; padding: 0; color: var(--accent); font-weight: 600; text-align: left; }
+  .bn-sub { color: var(--muted); font-size: 12px; }
+  .bn-meter { display: inline-block; width: 56px; height: 6px; border-radius: 3px; background: var(--meter-track); vertical-align: middle; margin-left: 8px; overflow: hidden; }
+  .bn-meter > span { display: block; height: 100%; background: var(--series-1); border-radius: 3px; }
+  #bnChart { position: relative; }
+  .bn-legend { display: flex; flex-wrap: wrap; gap: 4px 18px; font-size: 12px; color: var(--muted); margin: 4px 0 6px; min-height: 18px; }
+  .bn-key-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; }
+  .bn-key-line { display: inline-block; width: 18px; border-top: 2px solid var(--muted); margin-right: 6px; vertical-align: 3px; }
+  .bn-key-dot.closed, .bn-dot.closed { background: var(--series-1); fill: var(--series-1); }
+  .bn-key-dot.open, .bn-dot.open { background: var(--series-2); fill: var(--series-2); }
+  #bnChart svg { display: block; max-width: 100%; height: auto; overflow: visible; font-variant-numeric: tabular-nums; }
+  .bn-grid { stroke: var(--line); stroke-width: 1; }
+  .bn-axis { stroke: var(--axis); stroke-width: 1; }
+  .bn-tick { fill: var(--muted); font-size: 11px; }
+  .bn-title { fill: var(--muted); font-size: 12px; }
+  .bn-front { fill: none; stroke: var(--muted); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; opacity: .55; }
+  .bn-dot { stroke: var(--panel); stroke-width: 2; }
+  .bn-hit { fill: transparent; }
+  .bn-halo { fill: none; stroke: var(--ink); stroke-width: 1.5; opacity: 0; }
+  .bn-pt { cursor: pointer; outline: none; }
+  .bn-pt:hover .bn-halo, .bn-pt:focus-visible .bn-halo { opacity: .6; }
+  .bn-label { fill: var(--ink); font-size: 12px; pointer-events: none; }
+  .bn-tip { position: absolute; z-index: 2; pointer-events: none; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; font-size: 12px; box-shadow: 0 2px 10px rgba(0,0,0,.18); white-space: nowrap; }
+  .bn-tip b { font-variant-numeric: tabular-nums; }
+  .bn-tip-name, .bn-tip-more { color: var(--muted); }
+  .bn-tip-name { margin-bottom: 2px; }
+  .bn-tip-more { margin-top: 2px; font-size: 11px; }
   @media (max-width: 760px) {
     main { flex-direction: column; }
     #chat { width: 100%; max-width: none; resize: none; height: 55vh; border-right: 0; border-bottom: 1px solid var(--line); }
@@ -118,9 +165,10 @@
   <select id="provider" title="Which model answers"></select>
   <button id="load" title="Download and start the local model">Load model</button>
   <button id="models" title="Find and pick a model from OpenRouter">Models</button>
+  <button id="bench" title="Scores, time, steps and cost of the models tested on Slicer tasks">Benchmarks</button>
   <button id="settings">Settings</button>
   <span id="status">Starting…</span>
-  <span id="spend" title="Money spent on model calls since this tab was opened">$0.0000 this session</span>
+  <span id="spend" role="img" aria-label="Spent this session: $0" title="Money spent on model calls since this tab was opened"><us-cash id="spendCash" size="22" amount="0"></us-cash><span id="spendMore" hidden>+</span></span>
 </header>
 <main>
   <section id="chat">
@@ -221,6 +269,32 @@
     <h2 id="sdTitle">Slicer tasks</h2>
     <div id="sdBody"></div>
     <div class="buttons"><button value="close">Close</button></div>
+  </form>
+</dialog>
+
+<dialog id="benchDialog">
+  <form method="dialog">
+    <h2>Benchmarks on Slicer tasks</h2>
+    <p class="help">How the models did on this page's own tests: the same tasks for every model, each modeled on a question from the
+      Slicer forum and checked against Slicer's state or the numbers in the answer.</p>
+    <div class="bn-controls">
+      <select id="bnTest" title="Which test"></select>
+      <span class="bn-view" role="group" aria-label="View">
+        <button type="button" data-view="table" aria-pressed="true">Table</button>
+        <button type="button" data-view="chart" aria-pressed="false">Chart</button>
+      </span>
+      <span id="bnAxes" hidden>
+        <label>Plot <select id="bnY"></select></label>
+        <label>against <select id="bnX"></select></label>
+      </span>
+    </div>
+    <div id="bnTable"></div>
+    <div id="bnChart" hidden></div>
+    <p class="help">Costs are what OpenRouter charged; for Claude through Anthropic's API they are estimated from Anthropic's prices for
+      the tokens used. Time is from question to answer, including running Slicer. A step is one reply from the model, which can call
+      tools; a task stops at its step limit. Most models ran each test once, so a rerun can differ by a task or two. Results of
+      <span id="bnGenerated"></span>.</p>
+    <div class="buttons"><span id="bnShown" class="help"></span><button value="close">Close</button></div>
   </form>
 </dialog>
 

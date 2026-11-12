@@ -48,8 +48,9 @@ needs SlicerWeb to accept commands by message).
 
 ## What it costs
 
-The toolbar shows what this browser tab has spent so far (hover for each model and the current
-chat), and each answer ends with the cost of that request. Claude costs are estimated from list
+The toolbar shows what this browser tab has spent so far as the fewest US bills and coins that
+make it up, coins at their real relative sizes and a part of a penny as a pie (hover for the
+amount, each model and the current chat), and each answer ends with the cost of that request. Claude costs are estimated from list
 prices; OpenRouter reports what it charged. **Cost limit** in Settings (default $0.50) stops a
 request once it has cost that much.
 
@@ -64,6 +65,12 @@ use, price, speed, [Artificial Analysis](https://artificialanalysis.ai) scores, 
 project's own Slicer tasks. Those results are buttons (for example *hard 21/23*): they open a
 dashboard of every task the model passed and failed, how each failure happened, and what the test
 cost. Picking a model switches the chat to it through OpenRouter.
+
+**Benchmarks** puts every model tested here side by side, one test at a time (easy or hard tasks,
+12 or 25 steps): tasks passed, cost, time and steps per task, failed tool calls, and what the whole
+test cost and took. Sort the table by any column, or switch to a chart of any two of these, for
+example tasks passed against cost per task, with a line through the models that no other model
+beats on both. Click a model or a point for its task-by-task dashboard.
 
 Claude models can also be used directly with an Anthropic key (Settings → Claude). Other
 OpenAI-compatible endpoints (Jetstream2, Azure AI Foundry, Ollama, LM Studio, vLLM) are set up in
@@ -100,6 +107,9 @@ src/tools.js             search / read_file / run_python, and the example retrie
 src/slicer.js            SlicerBridge: runs Python in SlicerWeb, scene summary, reset
 src/models.js            the model picker (OpenRouter's model list)
 src/scores.js            the dashboard of a model's results on the Slicer tasks (bench/scores.json)
+src/bench.js             the Benchmarks dialog: all tested models as a sortable table or a chart
+src/us-cash.js           an amount as US bills and coins in SVG, and the <us-cash> element; no
+                         dependencies, so it can become a library of its own (test/us-cash.test.mjs)
 src/help.js              the instructions behind the ? buttons in Settings
 static-index/src/        the search index client (HTTP range reads, BM25 and embeddings)
 dev-server.mjs           local server: this directory, the index, SlicerWeb from the same origin
@@ -237,8 +247,9 @@ steps and, for the four best open models, again with 25:
 | Qwen3.8 27B (open) | 7 / 10 | 11 / 23 | | $0.026 | 75 s |
 | Qwen3.5 9B (open) | 5 / 10 | 3 / 23 | | $0.0095 | 46 s |
 
-(Two numbers: with 12 / 25 steps.) **Models** in the page shows each run task by task, with how
-each failure happened.
+(Two numbers: with 12 / 25 steps.) **Benchmarks** in the page sorts and charts these numbers;
+clicking a model there, or a score in **Models**, shows each run task by task, with how each
+failure happened.
 
 - Haiku through OpenRouter did as well as through the Anthropic API, so the OpenRouter path does not
   hold models back.

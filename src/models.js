@@ -5,7 +5,7 @@
 // most used overall and for programming, a ranking by throughput, and Artificial Analysis scores.
 // Results of this page's own evaluation (bench/scores.json, optional) are shown where they exist.
 
-import { groupLabel, openScoreDashboard, rate, summarize } from "./scores.js";
+import { groupLabel, loadScores, openScoreDashboard, rate, summarize } from "./scores.js";
 
 const API = "https://openrouter.ai/api/v1/models";
 const SHOWN = 60; // rows drawn at once; the filters narrow the rest
@@ -27,7 +27,7 @@ function loadCatalog(scoresUrl) {
       getList(`${API}?sort=most-popular`),
       getList(`${API}?sort=throughput-high-to-low`).catch(() => []),
       getList(`${API}?category=programming`).catch(() => []),
-      fetch(scoresUrl).then((r) => (r.ok ? r.json() : {})).catch(() => ({})),
+      loadScores(scoresUrl).catch(() => ({})),
     ]);
     const speedRank = new Map(fastest.map((m, i) => [m.id, i]));
     const codingIds = new Set(coding.map((m) => m.id));
