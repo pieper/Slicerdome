@@ -75,7 +75,7 @@ function clipLines(text, maxLines, maxChars) {
  * Tools as [{name, description, parameters (JSON Schema), run(args) -> Promise<string>}].
  * `bundle` is a static-index Bundle (or null to leave search out), `slicer` a SlicerBridge.
  */
-export function makeTools({ bundle, slicer, maxChars = MAX_RESULT_CHARS }) {
+export function makeTools({ bundle, slicer, maxChars = MAX_RESULT_CHARS, onInstall }) {
   const tools = [];
   if (bundle) {
     const corpora = bundle.corpusNames;
@@ -125,7 +125,7 @@ export function makeTools({ bundle, slicer, maxChars = MAX_RESULT_CHARS }) {
   }
   tools.push({
     name: "run_python",
-    description: "Run Python code in the running 3D Slicer (SlicerWeb, Python 3 in the browser). Variables persist between calls. Returns printed output, the value of a final expression, and any error with its traceback.",
+    description: "Run Python code in the running 3D Slicer (SlicerWeb, Python 3 in the browser). Variables persist between calls. Importing a package that is not installed installs it (Pyodide's packages or pure-Python wheels from PyPI) and runs the code again. Returns printed output, the value of a final expression, and any error with its traceback.",
     parameters: {
       type: "object",
       properties: { code: { type: "string", description: "Python code to run" } },
@@ -133,7 +133,7 @@ export function makeTools({ bundle, slicer, maxChars = MAX_RESULT_CHARS }) {
     },
     async run({ code }) {
       if (!code || !String(code).trim()) return "No code given.";
-      const r = await slicer.run(String(code));
+      const r = await slicer.run(String(code), { onInstall });
       const parts = [r.ok ? `[ran in ${r.seconds} s]` : "[error]"];
       if (r.output) parts.push(clip(r.output.replace(/\s+$/, ""), maxChars));
       if (r.result != null) parts.push(`Value: ${clip(r.result, 1500)}`);

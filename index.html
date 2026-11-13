@@ -32,6 +32,14 @@
   button:disabled { opacity: .5; cursor: default; }
   #status { color: var(--muted); font-size: 12px; margin-left: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1 1 0; min-width: 8em; text-align: right; }
   #spend { display: inline-flex; align-items: center; gap: 3px; font-size: 12px; white-space: nowrap; padding: 2px 6px; border: 1px solid var(--line); border-radius: 12px; cursor: help; }
+  #dropZone { position: fixed; inset: 0; z-index: 50; pointer-events: none; display: flex; align-items: center; justify-content: center;
+    background: color-mix(in srgb, var(--accent) 14%, transparent); border: 3px dashed var(--accent); }
+  #dropZone[hidden] { display: none; }
+  #dropZone > div { background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 10px; padding: 14px 20px;
+    display: flex; flex-direction: column; gap: 4px; text-align: center; box-shadow: 0 4px 18px rgba(0,0,0,.2); max-width: calc(100vw - 32px); }
+  #dropZone.busy { border-style: solid; }
+  #dropZone.busy #dropHint { display: none; }
+  #dropHint { color: var(--muted); font-size: 12px; }
   .request-total { border-top: 1px dashed var(--line); padding-top: 4px; }
   main { flex: 1; display: flex; min-height: 0; }
   #chat { width: 460px; min-width: 300px; max-width: 70vw; resize: horizontal; overflow: hidden; display: flex; flex-direction: column; border-right: 1px solid var(--line); background: var(--panel); }
@@ -41,6 +49,10 @@
   .msg.user { align-self: flex-end; background: var(--user-bg); padding: 8px 12px; border-radius: 12px 12px 2px 12px; max-width: 90%; white-space: pre-wrap; }
   .msg.assistant p { margin: 0 0 6px; }
   .msg.error { color: var(--err); }
+  .msg.welcome { background: var(--bg); border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 8px; padding: 10px 12px; }
+  .msg.welcome h2 { font-size: 15px; margin: 0 0 6px; }
+  .msg.welcome p { margin: 0 0 6px; }
+  .msg.welcome .buttons { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; margin-top: 8px; }
   .msg .meta { color: var(--muted); font-size: 11px; margin-top: 2px; }
   pre { background: var(--code-bg); padding: 8px; border-radius: 6px; overflow-x: auto; margin: 4px 0; font-size: 12px; white-space: pre-wrap; }
   code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
@@ -188,6 +200,9 @@
   <iframe id="slicer" title="3D Slicer"></iframe>
 </main>
 
+<div id="dropZone" hidden><div><b id="dropText">Drop to load into Slicer</b>
+  <span id="dropHint">Files such as NRRD, NIfTI, VTK, STL or MRB, or a folder of DICOM files</span></div></div>
+
 <dialog id="settingsDialog">
   <form method="dialog" id="settingsForm">
     <h2>Settings</h2>
@@ -215,6 +230,11 @@
         <option value="all">for all models</option>
         <option value="none">off</option>
       </select></label>
+    </fieldset>
+    <fieldset>
+      <legend>Models in this browser</legend>
+      <label><span>Show</span><span><input type="checkbox" id="localModels"> them in the model menu. They run on this computer's
+        graphics card (WebGPU) and send nothing anywhere, but they are a 1 to 5 GB download and much weaker: simple requests only.</span></label>
     </fieldset>
     <div id="remoteFields"></div>
     <p class="help">Keys are kept only in this browser (localStorage) and sent only to the provider they belong to.</p>

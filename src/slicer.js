@@ -135,6 +135,54 @@ def __agent_run(b64, limit=60):
     out = {"ok": ok, "output": buf.getvalue(), "result": result, "seconds": round(time.time() - t0, 3)}
     return base64.b64encode(json.dumps(out).encode("utf-8")).decode("ascii")
 
+def __agent_load_files(b64):
+    # Files dropped on the page, already copied into the browser's file system. DICOM files
+    # (.dcm, .ima, no extension, or any file no reader claims) are sorted into series and each
+    # series is loaded as a volume named like desktop Slicer's DICOM module does; other files go
+    # to the IO manager as the Data panel's do.
+    import base64, json, os, slicer, vtk
+    paths = json.loads(base64.b64decode(b64).decode("utf-8"))
+    io = slicer.app.coreIOManager()
+    dicom, others = [], []
+    for p in paths:
+        ext = os.path.splitext(p)[1].lower()
+        (dicom if ext in (".dcm", ".ima", "") or io.fileType(p) == "NoFile" else others).append(p)
+    series, unreadable, problems = {}, [], []
+    if dicom:
+        import pydicom
+        for p in dicom:
+            try:
+                ds = pydicom.dcmread(p, stop_before_pixels=True, specific_tags=["SeriesInstanceUID", "SeriesNumber", "SeriesDescription", "Modality"])
+                uid = str(ds.SeriesInstanceUID)
+            except Exception:
+                unreadable.append(os.path.basename(p))
+                continue
+            number, desc, modality = (str(ds.get(k, "") or "") for k in ("SeriesNumber", "SeriesDescription", "Modality"))
+            name = f"{number}: {desc or modality}" if number else (desc or modality)
+            series.setdefault(uid, {"files": [], "name": name, "modality": modality})["files"].append(p)
+    messages = slicer.vtkMRMLMessageCollection()
+    loaded = []
+    for uid, s in series.items():
+        nodes = vtk.vtkCollection()
+        io.loadNodes("VolumeFile", {"fileName": s["files"][0], "fileNames": s["files"], "singleFile": False}, nodes, messages)
+        if not nodes.GetNumberOfItems():
+            problems.append(f"DICOM series {s['name'] or uid} ({s['modality']}, {len(s['files'])} files) could not be loaded as a volume")
+        for i in range(nodes.GetNumberOfItems()):
+            node = nodes.GetItemAsObject(i)
+            if s["name"]:
+                node.SetName(s["name"])
+            loaded.append(node.GetID())
+    if others:
+        loaded += list(io.loadFiles(others, {}, messages) or [])
+    shown = [n for i in loaded for n in [slicer.mrmlScene.GetNodeByID(i)]
+             if n and n.IsA("vtkMRMLScalarVolumeNode") and not n.IsA("vtkMRMLLabelMapVolumeNode")]
+    if shown:
+        slicer.util.setSliceViewerLayers(background=shown[0], fit=True)
+    nodes = [[i, n.GetName(), n.GetClassName()] for i in loaded for n in [slicer.mrmlScene.GetNodeByID(i)] if n]
+    out = {"nodes": nodes, "unreadable": unreadable, "problems": problems,
+           "messages": messages.GetAllMessagesAsString() if messages.GetNumberOfMessages() else ""}
+    return base64.b64encode(json.dumps(out).encode("utf-8")).decode("ascii")
+
 def __agent_reset():
     # An empty scene, the default layout and none of the variables earlier code defined.
     import sys, slicer
@@ -188,13 +236,74 @@ export class SlicerBridge {
     }
   }
 
-  /** Run Python in the live scene. Returns {ok, output, result, seconds}. */
-  async run(code) {
+  /**
+   * Run Python in the live scene. Returns {ok, output, result, seconds}. As in SlicerWeb's own
+   * Python console, code that stops at a missing module (an import, or slicer.util.pip_install,
+   * which raises ModuleNotFoundError in the browser) gets the package installed (Pyodide's
+   * packages, else pure-Python wheels from PyPI) and is run again. onInstall(name) is told first.
+   */
+  async run(code, { onInstall } = {}) {
     await this.ready();
+    const notes = [];
+    const tried = new Set();
+    for (;;) {
+      const r = await this.runOnce(code);
+      // A missing submodule ("x.y") means the package is there: nothing to install.
+      const name = !r.ok && /ModuleNotFoundError: No module named '([\w-]+)'/.exec(r.output)?.[1];
+      if (!name || tried.has(name) || tried.size >= 5 || typeof this.web?.ensurePythonPackage !== "function") {
+        if (notes.length) r.output = `${notes.join("\n")}\n${r.output}`;
+        return r;
+      }
+      tried.add(name);
+      onInstall?.(name);
+      if (!(await this.web.ensurePythonPackage(name).catch(() => false))) {
+        r.output += `\n[The page could not install "${name}": in the browser only Pyodide's packages and pure-Python wheels from PyPI can be installed.]`;
+        if (notes.length) r.output = `${notes.join("\n")}\n${r.output}`;
+        return r;
+      }
+      notes.push(`[Installed the Python package "${name}", then ran the code again from the start.]`);
+    }
+  }
+
+  async runOnce(code) {
     const raw = await this.web.bridge.callYielding("evalPython", [`__agent_run(${JSON.stringify(b64encode(code))})`, "eval"]);
     const m = /^'?([A-Za-z0-9+/=]+)'?$/.exec(String(raw).trim());
     if (!m) throw new Error(`unexpected reply from SlicerWeb: ${String(raw).slice(0, 200)}`);
     return JSON.parse(b64decode(m[1]));
+  }
+
+  /**
+   * Load files (File objects; a folder's files carry webkitRelativePath) into the scene, like
+   * SlicerWeb's Data panel, except that DICOM files are sorted into series first (see
+   * __agent_load_files). onProgress(message) gets loading messages. Returns {nodes: [{id, name,
+   * kind}], unreadable: [file names], problems: [text], messages: text from the readers}.
+   */
+  async loadFiles(files, { onProgress } = {}) {
+    await this.ready();
+    const web = this.web;
+    const off = web.bridge.events?.on?.("loading-progress", (e) => e?.message && onProgress?.(e.message));
+    try {
+      onProgress?.(`Reading ${files.length === 1 ? files[0].name : `${files.length} files`}`);
+      const paths = await web.writeFiles(files);
+      onProgress?.(`Loading ${files.length === 1 ? files[0].name : `${files.length} files`}`);
+      const call = `__agent_load_files(${JSON.stringify(b64encode(JSON.stringify(paths)))})`;
+      let raw;
+      for (let attempt = 0; ; attempt++) {
+        try {
+          raw = await web.bridge.callYielding("evalPython", [call, "eval"]);
+          break;
+        } catch (e) {
+          // DICOM files are sorted into series with pydicom, installed on first use
+          if (attempt === 0 && /No module named 'pydicom'/.test(String(e.message ?? e)) && (await web.ensurePythonPackage?.("pydicom"))) continue;
+          throw e;
+        }
+      }
+      const r = JSON.parse(b64decode(String(raw).trim().replace(/^'|'$/g, "")));
+      r.nodes = r.nodes.map(([id, name, cls]) => ({ id, name, kind: cls.replace(/^vtkMRML|Node$/g, "").replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase() }));
+      return r;
+    } finally {
+      if (typeof off === "function") off();
+    }
   }
 
   /** Start over: clear the scene, restore the layout, drop variables from earlier code. */

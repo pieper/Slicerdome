@@ -30,7 +30,7 @@ jobs:
       - name: The page
         run: |
           mkdir _site
-          cp -r index.html src static-index bench LICENSE README.md _site/
+          cp -r index.html SKILL.md src static-index bench LICENSE README.md _site/
 
       - name: SlicerWeb
         run: |

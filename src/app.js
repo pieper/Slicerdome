@@ -12,6 +12,7 @@ import { openBenchmarks } from "./bench.js";
 import { breakdown, defineUsCash, describe } from "./us-cash.js";
 import { finishOpenRouterSignIn, listModels, LocalProvider, openRouterSignIn, RemoteProvider, REMOTE_PRESETS } from "./providers.js";
 import { SlicerBridge } from "./slicer.js";
+import { watchDrops } from "./drop.js";
 import { makeRetriever, makeTools } from "./tools.js";
 
 defineUsCash(); // <us-cash> in the toolbar
@@ -40,8 +41,13 @@ function loadSettings() {
   s.thinking ??= false;
   s.assist ??= "local"; // automatic example retrieval and loop breaking: "local" models, "all" or "none"
   s.maxSteps ??= 12;
-  s.provider ??= s.claude.apiKey ? `claude:${CLAUDE_MODELS[0].id}` : `local:${LOCAL_MODELS[0].id}`;
+  s.localModels ??= false; // models that run in this browser are offered only when turned on in Settings
+  s.provider ??= defaultProvider(s);
   return s;
+}
+/** With no model chosen: Claude when there is an Anthropic key, else OpenRouter when there is a key for it. */
+function defaultProvider(s) {
+  return !s.claude.apiKey && s.remote.openrouter?.apiKey ? "remote:openrouter" : `claude:${CLAUDE_MODELS[0].id}`;
 }
 function saveSettings() {
   try {
@@ -112,10 +118,13 @@ function providerOptions() {
   claude.label = "Claude (your Anthropic API key)";
   for (const m of CLAUDE_MODELS) claude.append(new Option(settings.claude.apiKey ? m.label : `${m.label} (add key in Settings)`, `claude:${m.id}`));
   sel.append(claude);
-  const local = document.createElement("optgroup");
-  local.label = hasWebGPU() ? "In this browser (private)" : "In this browser (needs WebGPU)";
-  for (const m of LOCAL_MODELS) local.append(new Option(m.label, `local:${m.id}`));
-  sel.append(local);
+  // Models that run in this browser are much weaker: offered when turned on in Settings (or chosen before)
+  if (settings.localModels || settings.provider.startsWith("local:")) {
+    const local = document.createElement("optgroup");
+    local.label = hasWebGPU() ? "In this browser (private, much weaker)" : "In this browser (needs WebGPU)";
+    for (const m of LOCAL_MODELS) local.append(new Option(m.label, `local:${m.id}`));
+    sel.append(local);
+  }
   const remote = document.createElement("optgroup");
   remote.label = "Remote (sends your messages)";
   for (const [id, p] of Object.entries(REMOTE_PRESETS)) {
@@ -126,7 +135,7 @@ function providerOptions() {
   }
   sel.append(remote);
   sel.value = settings.provider;
-  if (!sel.value) sel.value = `local:${LOCAL_MODELS[0].id}`;
+  if (!sel.value) sel.value = defaultProvider(settings);
 }
 
 function currentProvider() {
@@ -195,17 +204,28 @@ const bundleReady = (async () => {
 })();
 
 // ---------------------------------------------------------------------------------------------
+// The guide to this Slicer for the model (SKILL.md), added after the instructions
+
+const skill = fetch(new URL("../SKILL.md", import.meta.url))
+  .then((r) => (r.ok ? r.text() : Promise.reject(new Error(`SKILL.md: ${r.status}`))))
+  .then((text) => text.replace(/^---\n[\s\S]*?\n---\n/, "").trim())
+  .catch((e) => {
+    console.warn("SKILL.md could not be read; the model gets the instructions only", e);
+    return "";
+  });
+
+// ---------------------------------------------------------------------------------------------
 // The conversation
 
 let agent = null;
 let running = null; // {controller, promise}
 
-function newAgent() {
+function newAgent(guide) {
   const provider = currentProvider();
   agent = new Agent({
     provider,
-    tools: makeTools({ bundle, slicer, maxChars: provider.local ? 2000 : 3500 }),
-    instructions: INSTRUCTIONS,
+    tools: makeTools({ bundle, slicer, maxChars: provider.local ? 2000 : 3500, onInstall: (name) => setStatus(`Installing the Python package ${name}…`) }),
+    instructions: guide ? `${INSTRUCTIONS}\n\n${guide}` : INSTRUCTIONS,
     maxSteps: settings.maxSteps,
     thinking: settings.thinking,
     retrieve: makeRetriever(bundle),
@@ -314,6 +334,10 @@ function onEvent(ev) {
 async function send(text) {
   text = (text ?? $("input").value).trim();
   if (!text || running) return null;
+  if (dropping) {
+    addEl("error", "Wait until the dropped files are loaded, then send.");
+    return null;
+  }
   $("input").value = "";
   const p = currentProvider();
   addEl("user", escapeHtml(text));
@@ -326,7 +350,7 @@ async function send(text) {
       await ensureLoaded(p);
       setStatus("Waiting for Slicer…");
       await slicer.ready();
-      if (!agent || agent.provider !== p) newAgent();
+      if (!agent || agent.provider !== p) newAgent(await skill);
       agent.thinking = settings.thinking;
       agent.maxSteps = settings.maxSteps;
       agent.costLimit = settings.costLimit || null;
@@ -363,6 +387,58 @@ function newChat() {
   spend.chat = 0;
   showSpend();
   $("log").innerHTML = "";
+}
+
+// ---------------------------------------------------------------------------------------------
+// Welcome note: at the top of the chat until the visitor closes it (remembered in settings). It
+// says where answers come from, or, before there is a key to any provider, how to get one.
+
+/** Whether the selected model can answer: a key for its provider, or a model that runs in this browser. */
+function canAnswer() {
+  const [kind, id] = settings.provider.split(/:(.*)/s);
+  if (kind === "claude") return !!settings.claude.apiKey;
+  if (kind === "remote") return !!settings.remote[id]?.apiKey || /localhost|127\.0\.0\.1/.test(settings.remote[id]?.baseUrl ?? "");
+  return kind === "local" && hasWebGPU();
+}
+
+function welcomeHtml() {
+  const intro = `<h2>Welcome to Slicerdome</h2>
+    <p>Ask about 3D Slicer, or ask for something to be done in the Slicer next to this chat. The model can search Slicer's
+      code and forum, run Python in that Slicer, install Python packages and fetch public data such as the
+      Imaging Data Commons, so you can watch what it does and see the code. Drop your own files or DICOM folders on the
+      page to load them.</p>`;
+  const main = canAnswer()
+    ? `<p>Answers currently come from <b>${escapeHtml(currentProvider().label)}</b>. Change it in the menu at the top, or
+        find another model with <b>Models</b>.</p>`
+    : `<p>To start, get an API key from <b>Anthropic</b> (Claude models), <b>OpenRouter</b> (hundreds of models with one
+        key, Claude among them), or both, and add it in <b>Settings</b>. The <b>?</b> next to each provider there shows how;
+        OpenRouter also has a sign-in button that makes a key for you. Give the key a low spending limit: in our tests a
+        task cost about a tenth of a cent with Claude Haiku and a few cents with the largest models.</p>`;
+  return `${intro}${main}
+    <p>Keys stay in this browser. What you spend shows at the top right in coins and bills, and <b>Benchmarks</b> compares
+      the models tested on Slicer tasks.</p>
+    <div class="buttons"><button type="button" data-w="settings"${canAnswer() ? "" : ' class="primary"'}>Settings</button><button type="button" data-w="bench">Benchmarks</button><button type="button" data-w="close"${canAnswer() ? ' class="primary"' : ""}>Got it</button></div>`;
+}
+
+/** Show the note (or bring the one shown up to date) unless the visitor has closed it. */
+function showWelcome({ refresh = false } = {}) {
+  if (settings.welcomed) return;
+  let el = $("log").querySelector(".msg.welcome");
+  if (!el && refresh) return;
+  if (el) {
+    el.innerHTML = welcomeHtml();
+  } else {
+    el = addEl("welcome", welcomeHtml());
+    $("log").prepend(el); // above any message that came first (the OpenRouter sign-in)
+    $("log").scrollTop = 0; // a small screen starts at the note's title
+  }
+  el.querySelector("[data-w=settings]").onclick = () => $("settings").onclick();
+  el.querySelector("[data-w=bench]").onclick = () => openBenchmarks();
+  el.querySelector("[data-w=close]").onclick = () => {
+    settings.welcomed = true;
+    saveSettings();
+    el.remove();
+  };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -425,6 +501,7 @@ $("settings").onclick = () => {
   $("thinking").checked = settings.thinking;
   $("maxSteps").value = settings.maxSteps;
   $("assist").value = settings.assist;
+  $("localModels").checked = settings.localModels;
   buildRemoteFields();
   for (const panel of $("settingsForm").querySelectorAll("[data-help-panel]")) panel.hidden = true;
   $("settingsDialog").showModal();
@@ -449,12 +526,78 @@ $("settingsDialog").addEventListener("close", () => {
   settings.maxSteps = Math.max(1, Math.min(40, Number($("maxSteps").value) || 12));
   settings.assist = $("assist").value;
   for (const fs of $("remoteFields").querySelectorAll("fieldset")) settings.remote[fs.dataset.id] = readFieldset(fs);
+  settings.localModels = $("localModels").checked;
+  // A model that cannot answer (no key yet, or a browser model no longer offered): the default one
+  if ((settings.provider.startsWith("local:") && !settings.localModels) || !canAnswer()) settings.provider = defaultProvider(settings);
   saveSettings();
   // Remote providers are rebuilt with the new settings; Claude providers read them at each call.
   for (const [value, p] of providers) if (!p.local && !(p instanceof ClaudeProvider)) providers.delete(value);
   providerOptions(); // selects settings.provider
   agent = null;
   updateProviderUi();
+  showWelcome({ refresh: true });
+});
+
+// ---------------------------------------------------------------------------------------------
+// Files dropped on the page or on Slicer's views are loaded into Slicer (src/drop.js)
+
+const DROP_PROMPT = "Drop to load into Slicer";
+let dropping = false;
+let dropTimer = null;
+
+function dropHover() {
+  if (dropping) return;
+  $("dropZone").hidden = false;
+  clearTimeout(dropTimer); // dragover repeats while files are held over the page
+  dropTimer = setTimeout(() => ($("dropZone").hidden = true), 250);
+}
+
+async function dropFiles(files, error) {
+  clearTimeout(dropTimer);
+  const zone = $("dropZone");
+  const say = (text) => ($("dropText").textContent = text);
+  if (dropping) return;
+  if (error || !files.length || running) {
+    zone.hidden = true;
+    if (error) addEl("error", `The dropped files could not be read: ${escapeHtml(String(error.message ?? error))}`);
+    else if (running) addEl("error", "Wait for the current request to finish, or press Stop, then drop the files again.");
+    return;
+  }
+  dropping = true;
+  const label = files.length === 1 ? files[0].name : `${files.length} files`;
+  zone.hidden = false;
+  zone.classList.add("busy");
+  say(slicer.status === "ready" ? `Loading ${label}…` : "Waiting for Slicer to start…");
+  try {
+    const r = await slicer.loadFiles(files, { onProgress: say });
+    const lines = [r.nodes.length
+      ? `Loaded into Slicer: ${r.nodes.map((n) => `<b>${escapeHtml(n.name)}</b> (${escapeHtml(n.kind)})`).join(", ")}.`
+      : `Nothing could be loaded from ${escapeHtml(label)}.`];
+    for (const p of r.problems) lines.push(escapeHtml(p) + ".");
+    if (r.unreadable.length) {
+      const some = r.unreadable.slice(0, 5).map(escapeHtml).join(", ");
+      lines.push(`${r.unreadable.length} file${r.unreadable.length === 1 ? " is" : "s are"} neither DICOM nor a format Slicer reads: ${some}${r.unreadable.length > 5 ? ", …" : ""}.`);
+    }
+    if (r.messages) lines.push(`<details><summary>What the readers reported</summary><pre>${escapeHtml(r.messages)}</pre></details>`);
+    addEl(r.nodes.length ? "assistant" : "error", `<div class="meta">${lines.join("<br>")}</div>`);
+  } catch (e) {
+    addEl("error", `Loading ${escapeHtml(label)} failed: ${escapeHtml(String(e.message ?? e))}`);
+  } finally {
+    dropping = false;
+    zone.hidden = true;
+    zone.classList.remove("busy");
+    say(DROP_PROMPT);
+  }
+}
+
+const dropHandlers = { onHover: dropHover, onFiles: dropFiles };
+watchDrops(window, dropHandlers);
+$("slicer").addEventListener("load", () => {
+  try {
+    watchDrops($("slicer").contentWindow, dropHandlers); // a new document each time the frame loads
+  } catch (e) {
+    console.warn("drops on the Slicer frame are not taken", e);
+  }
 });
 
 // ---------------------------------------------------------------------------------------------
@@ -466,6 +609,7 @@ $("provider").onchange = () => {
   if (running) running.controller.abort();
   agent = null; // a new model starts a fresh context; the chat log stays visible
   updateProviderUi();
+  showWelcome({ refresh: true });
 };
 $("models").onclick = () => openModelPicker({
   current: settings.provider === "remote:openrouter" ? settings.remote.openrouter.model : null,
@@ -506,6 +650,7 @@ if (params.get("provider")) settings.provider = params.get("provider");
 providerOptions();
 updateProviderUi();
 showSpend();
+showWelcome();
 finishOpenRouterSignIn()
   .then((key) => {
     if (!key) return;
@@ -514,6 +659,7 @@ finishOpenRouterSignIn()
     saveSettings();
     providerOptions();
     updateProviderUi();
+    showWelcome({ refresh: true });
     addEl("assistant", "<div class=\"meta\">Signed in to OpenRouter; the key is saved in this browser.</div>");
   })
   .catch((e) => addEl("error", escapeHtml(String(e.message ?? e))));

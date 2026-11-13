@@ -8,9 +8,11 @@ browser. The model you pick can:
   Slicer's dependencies (CTK, vtkAddon, SlicerExecutionModel), through a static index;
 - **read_file** from them;
 - **run_python** in the Slicer next to the chat, and see the output, the value of the last line
-  and any traceback.
+  and any traceback. Python packages it imports are installed on the spot, and it can fetch
+  public data, such as images from the [Imaging Data Commons](https://imaging.datacommons.cancer.gov).
 
-So you can watch it load data, segment, measure and render, and see the code it ran.
+So you can watch it load data, segment, measure and render, and see the code it ran. Drop your
+own files or DICOM folders anywhere on the page to load them into Slicer.
 
 **Try it: <https://pieper.github.io/Slicerdome/>** (Chrome or Edge; Safari 26 works too)
 
@@ -18,18 +20,38 @@ This is an early test. Bring your own key for a model provider: there is no shar
 
 ## Getting started
 
-1. Open the page. SlicerWeb (about 70 MB) loads on the right.
-2. Open **Settings** and add a key for one provider. The **?** next to each provider says how to
-   get one. Claude (Anthropic), or OpenRouter (hundreds of models with one key), are the quickest.
+1. Open the page. SlicerWeb (about 70 MB) loads on the right, and a welcome note in the chat says
+   how to get started, or, once there is a key, which model answers.
+2. Open **Settings** and add a key from Anthropic, OpenRouter, or both. The **?** next to each
+   provider says how to get one; OpenRouter (hundreds of models with one key) also has a sign-in
+   button that makes a key for you.
 3. Pick the model in the menu at the top, or find one with **Models**.
 4. Ask, for example: *Load MRHead and show it with volume rendering using the MR-Default preset,
-   with the slice planes hidden in 3D.*
+   with the slice planes hidden in 3D*, or *Load a chest CT from the Imaging Data Commons and
+   tell me its voxel spacing.*
 
 Keys stay in your browser (localStorage) and are sent only to the provider they belong to.
 Messages, the code the model writes and Slicer's output go to the provider you pick; a notice
 above the chat says which one. Models that run in the browser (WebGPU, through
-[WebLLM](https://github.com/mlc-ai/web-llm)) send nothing anywhere, but they are much weaker
-(see below).
+[WebLLM](https://github.com/mlc-ai/web-llm)) send nothing anywhere, but they are much weaker, so
+they are off unless turned on in Settings → **Models in this browser** (see below).
+
+## Your data, packages and public data
+
+- **Drop** files (NRRD, NIfTI, MetaImage, VTK, STL, OBJ, segmentations, markups, MRB scenes, ...)
+  or a folder of DICOM files anywhere on the page, on the chat or on Slicer's views. DICOM files
+  are sorted into series and each series becomes a volume named like desktop Slicer names it;
+  the chat lists what was loaded. The files are copied into the browser's memory, not uploaded;
+  what the model then sees of them is what it reads with its code.
+- **Python packages**: when the model's code imports a package that is not installed (or calls
+  `slicer.util.pip_install`), the page installs it, from Pyodide's builds or as a pure-Python
+  wheel from PyPI, and runs the code again. pandas, scipy, matplotlib, nibabel, pydicom, duckdb,
+  pyarrow and requests install this way; packages with compiled code that Pyodide has not built
+  (SimpleITK, scikit-image, torch) cannot.
+- **[SKILL.md](SKILL.md)** is the guide the model gets with its instructions: how this Slicer
+  differs from desktop Slicer, installing packages, downloading, loading DICOM, and getting
+  series from the Imaging Data Commons (its index is queried with duckdb, and the files come
+  straight from IDC's public buckets). Edit it to teach the models more about this setup.
 
 ## Keys and safety
 
@@ -70,7 +92,8 @@ cost. Picking a model switches the chat to it through OpenRouter.
 12 or 25 steps): tasks passed, cost, time and steps per task, failed tool calls, and what the whole
 test cost and took. Sort the table by any column, or switch to a chart of any two of these, for
 example tasks passed against cost per task, with a line through the models that no other model
-beats on both. Click a model or a point for its task-by-task dashboard.
+beats on both. Click a model or a point for its task-by-task dashboard. The results so far were measured
+before [SKILL.md](SKILL.md) was added to the instructions.
 
 Claude models can also be used directly with an Anthropic key (Settings → Claude). Other
 OpenAI-compatible endpoints (Jetstream2, Azure AI Foundry, Ollama, LM Studio, vLLM) are set up in
@@ -98,13 +121,16 @@ keeps a copy in `~/.cache/slicerdome`. The published site holds its own copy, ad
 
 ```
 index.html, src/app.js   page, settings, rendering
-src/agent.js             the agent loop and its instructions
+src/agent.js             the agent loop and its instructions (SKILL.md is added to them)
+SKILL.md                 the guide to this Slicer that the model gets (packages, downloads, IDC)
 src/providers.js         LocalProvider (WebLLM) and RemoteProvider (OpenAI chat completions)
 src/claude.js            ClaudeProvider (Anthropic Messages API, official SDK, prompt caching)
 src/qwen-tools.js        Qwen3.5's tool-call format for the local models
 src/local-llm.js         WebLLM engine in a Web Worker (src/llm-worker.js), model list
 src/tools.js             search / read_file / run_python, and the example retriever
-src/slicer.js            SlicerBridge: runs Python in SlicerWeb, scene summary, reset
+src/slicer.js            SlicerBridge: runs Python in SlicerWeb (installing missing packages),
+                         scene summary, reset, loading dropped files
+src/drop.js              takes files and folders dropped anywhere on the page
 src/models.js            the model picker (OpenRouter's model list)
 src/scores.js            the dashboard of a model's results on the Slicer tasks (bench/scores.json)
 src/bench.js             the Benchmarks dialog: all tested models as a sortable table or a chart
@@ -273,8 +299,9 @@ failure happened.
 - Qwen3.5 9B, the model run in the browser above, passed 5 of the 10 easy tasks this way (4 in
   the browser at 4 bits).
 
-So for local use the page defaults to **Qwen3.5 9B**, and anything beyond a simple scene edit is a job for a
-remote model. The local models fit better as a fallback for simple requests, or for roles that
+So the models that run in the browser are off by default (Settings → **Models in this browser**);
+turned on, **Qwen3.5 9B** is the best of them, and anything beyond a simple scene edit is a job for
+a remote model. The local models fit better as a fallback for simple requests, or for roles that
 need no planning (screening what goes to a remote model, rewriting search queries).
 
 ## Evaluate
@@ -334,6 +361,8 @@ often served by several hosts at different quantizations; OpenRouter picks the h
   Slicer raises a Python exception instead. The instructions warn the model; the evaluation
   reopens the page when it happens.
 - No PHI screen yet: with a remote provider, prompts, code and tool output go to that provider.
+- Everything loaded or downloaded is held in the browser's memory, so very large series or many
+  of them can run it out; prefer small series from IDC.
 - The model cannot see the views yet (no screenshot tool).
 - SlicerLive (TypeScript) is not connected yet.
 
