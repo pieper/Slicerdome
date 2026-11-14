@@ -206,7 +206,8 @@ const bundleReady = (async () => {
 // ---------------------------------------------------------------------------------------------
 // The guide to this Slicer for the model (SKILL.md), added after the instructions
 
-const skill = fetch(new URL("../SKILL.md", import.meta.url))
+// ?skill=0 leaves it out, for measuring what it changes (bench/eval.mjs --no-skill).
+const skill = params.get("skill") === "0" ? Promise.resolve("") : fetch(new URL("../SKILL.md", import.meta.url))
   .then((r) => (r.ok ? r.text() : Promise.reject(new Error(`SKILL.md: ${r.status}`))))
   .then((text) => text.replace(/^---\n[\s\S]*?\n---\n/, "").trim())
   .catch((e) => {

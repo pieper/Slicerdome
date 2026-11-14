@@ -19,6 +19,9 @@ export function loadScores(url = "./bench/scores.json") {
   return scores;
 }
 
+/** Easy, hard, then other task sets (such as the IDC data tasks). */
+export const setOrder = (set) => ({ basic: 0, hard: 1 })[set] ?? 2;
+
 /** Groups of runs the picker and the Benchmarks dialog show: easy and hard tasks at the usual 12 steps, then other step limits. */
 export function summarize(entry) {
   const groups = new Map();
@@ -29,7 +32,7 @@ export function summarize(entry) {
     for (const t of r.tasks ?? []) { g.steps += t.steps ?? 0; g.failed += t.failedCalls ?? 0; }
     groups.set(key, g);
   }
-  return [...groups.values()].sort((a, b) => (a.set === b.set ? a.maxSteps - b.maxSteps : a.set === "basic" ? -1 : 1));
+  return [...groups.values()].sort((a, b) => setOrder(a.set) - setOrder(b.set) || a.maxSteps - b.maxSteps);
 }
 
 /** The fraction passed in a set at 12 steps (for sorting), or -1. */
@@ -109,7 +112,7 @@ export function openScoreDashboard({ id, name, entry, sets, focus }) {
   $("sdTitle").textContent = name ? `${name} on Slicer tasks` : `${id} on Slicer tasks`;
   const total = runs.reduce((a, r) => a + r.cost, 0);
   $("sdBody").innerHTML = `<p class="help"><code>${esc(id)}</code> · ${runs.length} test run${runs.length === 1 ? "" : "s"}, ${money(total)} in all.
-      Each task is modeled on a question from the Slicer forum and checked against Slicer's state or the numbers in the answer.
+      The easy and hard tasks are modeled on questions from the Slicer forum; each task is checked against Slicer's state or the numbers in the answer.
       Click a task for details.</p>` +
     runs.map((r) => runSection(r, sets, `${r.set}:${r.maxSteps}` === focus)).join("");
   $("sdBody").onclick = (ev) => {

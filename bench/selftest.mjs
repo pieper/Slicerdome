@@ -2,13 +2,13 @@
 // Check the evaluation tasks themselves, without a model: for each task, the judge must fail a run
 // that does nothing, pass the task's reference solution, and fail its `wrong` solution if it has one.
 //
-//   node bench/selftest.mjs --profile DIR [--set hard] [--tasks a,b] [--base http://localhost:8795]
+//   node bench/selftest.mjs --profile DIR [--set hard|idc] [--tasks a,b] [--base http://localhost:8795]
 import { launch } from "./cdp.mjs";
 
 const args = process.argv.slice(2);
 const opt = (name, dflt) => { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : dflt; };
 const set = opt("--set", "hard");
-const { TASKS } = await import(set === "hard" ? "./tasks-hard.mjs" : "./tasks.mjs");
+const { TASKS } = await import({ hard: "./tasks-hard.mjs", idc: "./tasks-idc.mjs" }[set] ?? "./tasks.mjs");
 const only = opt("--tasks")?.split(",");
 const tasks = TASKS.filter((t) => !only || only.includes(t.id));
 

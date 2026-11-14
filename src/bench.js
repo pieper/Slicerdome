@@ -2,7 +2,7 @@
 // table that sorts by any column and as a chart of any two measures, such as cost per task against
 // tasks passed. Clicking a model opens its dashboard of the tasks it passed and failed.
 
-import { loadScores, openScoreDashboard, summarize } from "./scores.js";
+import { loadScores, openScoreDashboard, setOrder, summarize } from "./scores.js";
 
 const $ = (id) => document.getElementById(id);
 const SVG = "http://www.w3.org/2000/svg";
@@ -52,7 +52,7 @@ function tests(scores) {
   const found = new Map();
   for (const entry of Object.values(scores.models ?? {}))
     for (const g of summarize(entry)) found.set(g.key, { ...g, models: (found.get(g.key)?.models ?? 0) + 1, tasks: g.n / g.runs });
-  return [...found.values()].sort((a, b) => (a.set === b.set ? a.maxSteps - b.maxSteps : a.set === "basic" ? -1 : 1)).map((t) => {
+  return [...found.values()].sort((a, b) => setOrder(a.set) - setOrder(b.set) || a.maxSteps - b.maxSteps).map((t) => {
     const label = scores.sets?.[t.set]?.label ?? t.set;
     return { key: t.key, text: `${label[0].toUpperCase()}${label.slice(1)} tasks (${t.tasks}), up to ${t.maxSteps} steps · ${t.models} model${t.models === 1 ? "" : "s"}` };
   });

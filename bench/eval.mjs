@@ -3,7 +3,7 @@
 // fresh SlicerWeb per task, the agent with the chosen provider, then a check of Slicer's state.
 //
 //   node bench/eval.mjs --profile DIR --provider local:Qwen3.5-4B-q4f16_1-MLC [--tasks a,b]
-//        [--set hard] [--thinking] [--repeat N] [--out results.json] [--base http://localhost:8795] [--headed]
+//        [--set hard|idc] [--no-skill] [--thinking] [--repeat N] [--out results.json] [--base http://localhost:8795] [--headed]
 //   ANTHROPIC_API_KEY=... node bench/eval.mjs --profile DIR --provider claude:claude-haiku-5-5
 //        [--effort low|medium|high] [--cost-limit 1]
 //   OPENROUTER_API_KEY=... node bench/eval.mjs --profile DIR --provider remote:openrouter
@@ -20,7 +20,7 @@ const out = opt("--out");
 const repeat = Number(opt("--repeat", 1));
 const taskTimeout = Number(opt("--task-timeout", 600)) * 1000;
 const set = opt("--set", "basic");
-const { TASKS } = await import(set === "hard" ? "./tasks-hard.mjs" : "./tasks.mjs");
+const { TASKS } = await import({ hard: "./tasks-hard.mjs", idc: "./tasks-idc.mjs" }[set] ?? "./tasks.mjs");
 const only = opt("--tasks")?.split(",");
 const tasks = TASKS.filter((t) => !only || only.includes(t.id));
 const log = (...a) => console.error(new Date().toISOString().slice(11, 19), ...a);
@@ -40,11 +40,13 @@ const s = await launch({
     }
   },
 });
-const results = { provider, set, thinking: args.includes("--thinking"), started: new Date().toISOString(), tasks: [] };
+// --no-skill leaves SKILL.md (the guide to this Slicer) out of the model's instructions.
+const skill = !args.includes("--no-skill");
+const results = { provider, set, skill, thinking: args.includes("--thinking"), started: new Date().toISOString(), tasks: [] };
 
 /** Open the chat page and apply the run's settings (again after SlicerWeb's Python has died). */
 async function openPage() {
-  await s.navigate(`${base}/?log=1&provider=${encodeURIComponent(provider)}`);
+  await s.navigate(`${base}/?log=1&provider=${encodeURIComponent(provider)}${skill ? "" : "&skill=0"}`);
   await s.waitFor("!!window.slicerChat", { timeout: 60000 });
   await s.evaluate(`slicerChat.bundleReady.then(() => !!slicerChat.bundle)`);
   results.assist = opt("--assist", "local");
@@ -110,6 +112,7 @@ try {
         const seconds = (Date.now() - t0) / 1000;
         await new Promise((r) => setTimeout(r, 300));
         const agentLog = await s.evaluate("slicerChat.agent ? slicerChat.agent.log : []");
+        const guided = await s.evaluate("!!slicerChat.agent && /## Imaging Data Commons/.test(slicerChat.agent.instructions)");
         log("  checking");
         const truthRun = await s.evaluate(`slicerChat.slicer.run(${JSON.stringify(task.truth)})`);
         let truth = {};
@@ -137,7 +140,7 @@ try {
         const prefill = steps.map((e) => e.reply.timings?.prefill_tok_s).filter(Boolean);
         const decode = steps.map((e) => e.reply.timings?.decode_tok_s).filter(Boolean);
         const row = {
-          id: task.id, source: task.source, run: rep + 1, pass, why, seconds, steps: steps.length, used, toolErrors, formatProblems,
+          id: task.id, source: task.source, run: rep + 1, pass, why, seconds, steps: steps.length, used, toolErrors, formatProblems, skill: guided,
           timeout: !!reply.timeout, stopped: !!reply.stopped,
           served: [...new Set(steps.map((e) => e.reply.served).filter(Boolean))],
           promptTokens: steps.reduce((n, e) => { const u = e.reply.usage ?? {}; return n + (u.prompt_tokens ?? (u.input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0)); }, 0),

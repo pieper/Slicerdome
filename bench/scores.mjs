@@ -11,6 +11,9 @@
 import { readFileSync } from "node:fs";
 import { TASKS as BASIC } from "./tasks.mjs";
 import { TASKS as HARD } from "./tasks-hard.mjs";
+import { TASKS as IDC } from "./tasks-idc.mjs";
+
+const ORDER = { basic: 0, hard: 1, idc: 2 };
 
 const clip = (s, n) => (s && s.length > n ? `${s.slice(0, n)}…` : s || "");
 
@@ -40,16 +43,20 @@ function lastError(t) {
 const models = {};
 for (const file of process.argv.slice(2)) {
   const r = JSON.parse(readFileSync(file, "utf8"));
-  if (!r.tasks?.length || r.provider.startsWith("local:")) continue;
+  // The page always gives the model SKILL.md; runs without it (--no-skill) were for comparison.
+  if (!r.tasks?.length || r.provider.startsWith("local:") || r.skill === false) continue;
   const id = r.provider.startsWith("claude:")
     ? `anthropic/${r.provider.slice(7).replace(/-(\d+)-(\d+)$/, "-$1.$2")}` // claude-haiku-5-5 -> anthropic/claude-haiku-5.5
     : r.model;
   if (!id) continue;
   const set = r.set ?? "basic";
   const maxSteps = r.maxSteps ?? 12;
+  // A file made with --repeat holds several runs of the set; each becomes its own run.
+  for (const rep of [...new Set(r.tasks.map((t) => t.run ?? 1))]) {
+  const done = r.tasks.filter((t) => (t.run ?? 1) === rep);
   const hosts = {};
-  for (const t of r.tasks) for (const h of t.served ?? []) hosts[h] = (hosts[h] ?? 0) + 1;
-  const tasks = r.tasks.map((t) => ({
+  for (const t of done) for (const h of t.served ?? []) hosts[h] = (hosts[h] ?? 0) + 1;
+  const tasks = done.map((t) => ({
     id: t.id, pass: !!t.pass, outcome: outcome(t, maxSteps), why: clip(t.why, 400),
     steps: t.steps, seconds: +(t.seconds ?? 0).toFixed(1), cost: t.cost ?? null, failedCalls: t.toolErrors ?? 0,
     answer: clip(t.answer, t.pass ? 300 : 700), lastError: t.pass ? "" : lastError(t),
@@ -61,12 +68,13 @@ for (const file of process.argv.slice(2)) {
     hosts: Object.keys(hosts).sort((a, b) => hosts[b] - hosts[a]),
     effort: r.effort || "default",
     passed: tasks.filter((t) => t.pass).length, n: tasks.length,
-    cost: +r.tasks.reduce((a, t) => a + (t.cost ?? 0), 0).toFixed(4),
-    seconds: +r.tasks.reduce((a, t) => a + (t.seconds ?? 0), 0).toFixed(0),
+    cost: +done.reduce((a, t) => a + (t.cost ?? 0), 0).toFixed(4),
+    seconds: +done.reduce((a, t) => a + (t.seconds ?? 0), 0).toFixed(0),
     tasks,
   });
+  }
 }
-for (const runs of Object.values(models)) runs.sort((a, b) => (a.set === b.set ? a.maxSteps - b.maxSteps || a.date.localeCompare(b.date) : a.set === "basic" ? -1 : 1));
+for (const runs of Object.values(models)) runs.sort((a, b) => ORDER[a.set] - ORDER[b.set] || a.maxSteps - b.maxSteps || a.date.localeCompare(b.date));
 
 /** Name, maker and open weights for each model id, from OpenRouter's public list (none if offline). */
 async function modelInfo() {
@@ -87,6 +95,6 @@ const info = await modelInfo();
 const describe = (list) => list.map((t) => ({ id: t.id, prompt: t.prompt, ...(t.source ? { source: t.source } : {}) }));
 console.log(JSON.stringify({
   generated: new Date().toISOString().slice(0, 10),
-  sets: { basic: { label: "easy", tasks: describe(BASIC) }, hard: { label: "hard", tasks: describe(HARD) } },
+  sets: { basic: { label: "easy", tasks: describe(BASIC) }, hard: { label: "hard", tasks: describe(HARD) }, idc: { label: "IDC data", tasks: describe(IDC) } },
   models: Object.fromEntries(Object.entries(models).map(([id, runs]) => [id, { ...info.get(id), runs }])),
 }));

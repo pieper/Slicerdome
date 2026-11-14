@@ -115,7 +115,8 @@ def idc_series_urls(series_aws_url):
         if token:
             listing += "&continuation-token=" + urllib.parse.quote(token)
         root = ET.fromstring(open_url(listing).read())
-        urls += [f"https://{bucket}.s3.amazonaws.com/{k.text}" for k in root.iter(ns + "Key")]
+        urls += [f"https://{bucket}.s3.amazonaws.com/{k.text}" for k in root.iter(ns + "Key")
+                 if not k.text.endswith("/")]  # some series also list their folder
         token = root.findtext(ns + "NextContinuationToken")
         if not token:
             return urls

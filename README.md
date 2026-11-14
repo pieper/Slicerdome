@@ -88,12 +88,12 @@ project's own Slicer tasks. Those results are buttons (for example *hard 21/23*)
 dashboard of every task the model passed and failed, how each failure happened, and what the test
 cost. Picking a model switches the chat to it through OpenRouter.
 
-**Benchmarks** puts every model tested here side by side, one test at a time (easy or hard tasks,
-12 or 25 steps): tasks passed, cost, time and steps per task, failed tool calls, and what the whole
+**Benchmarks** puts every model tested here side by side, one test at a time (easy, hard or IDC
+data tasks, 12 or 25 steps): tasks passed, cost, time and steps per task, failed tool calls, and what the whole
 test cost and took. Sort the table by any column, or switch to a chart of any two of these, for
 example tasks passed against cost per task, with a line through the models that no other model
-beats on both. Click a model or a point for its task-by-task dashboard. The results so far were measured
-before [SKILL.md](SKILL.md) was added to the instructions.
+beats on both. Click a model or a point for its task-by-task dashboard. The results were measured on
+2026-11-13 and 14 with [SKILL.md](SKILL.md) in the instructions.
 
 Claude models can also be used directly with an Anthropic key (Settings → Claude). Other
 OpenAI-compatible endpoints (Jetstream2, Azure AI Foundry, Ollama, LM Studio, vLLM) are set up in
@@ -277,6 +277,13 @@ steps and, for the four best open models, again with 25:
 clicking a model there, or a score in **Models**, shows each run task by task, with how each
 failure happened.
 
+Rerun on 2026-11-13 and 14 with [SKILL.md](SKILL.md) in the instructions (the numbers
+**Benchmarks** now shows), every open model but Qwen3.5 9B passed one or two more easy tasks, and
+Claude stayed at 10 / 10. On the hard tasks most changes were within the one or two tasks that
+separate two runs of the same model; the clear gain was DeepSeek V4.1 Flash at 12 steps (15 → 20).
+Qwen3.5 9B fell to 1 / 10 because OpenRouter now sends it mostly to a different host: a run
+without SKILL.md the same day also passed 1.
+
 - Haiku through OpenRouter did as well as through the Anthropic API, so the OpenRouter path does not
   hold models back.
 - With 12 steps most open-model failures ran out of steps while fixing API mistakes
@@ -322,6 +329,31 @@ wrong one:
 ```sh
 node bench/selftest.mjs --profile /tmp/chrome-eval --set hard
 ```
+
+`--set idc` runs two tasks that need public data from the Imaging Data Commons
+(`bench/tasks-idc.mjs`): count a collection's series by modality, and load a prostate MRI and
+name its patient and collection. `--no-skill` leaves [SKILL.md](SKILL.md) out of the
+instructions, to measure what it changes. Each model ran both tasks twice with and without it
+(at most 12 steps, 2026-11-13):
+
+| | Without SKILL.md | With SKILL.md |
+|---|---|---|
+| Claude Haiku 5.5 | 0 / 4, $0.011 | 4 / 4, $0.004 |
+| Claude Sonnet 5.5 | 2 / 4, $0.21 | 4 / 4, $0.05 |
+| Claude Opus 5.5 | 2 / 4, $0.37 | 4 / 4, $0.11 |
+| DeepSeek V4.1 Flash | 0 / 4, $0.013 | 4 / 4, $0.009 |
+| Qwen3.8 27B | 0 / 4, $0.087 | 4 / 4, $0.030 |
+| Kimi K3 | 0 / 4, $0.73 | 4 / 4, $0.11 |
+| GLM 5.3 | 0 / 4, $0.079 | 4 / 4, $0.032 |
+| Qwen3.8 Flash | 0 / 4, $0.022 | 2 / 4, $0.012 |
+| MiniMax M3.1 Flash | 1 / 4, $0.019 | 2 / 4, $0.015 |
+| Qwen3.5 9B | 0 / 4, $0.014 | 1 / 4, $0.014 |
+
+(Kimi K3, GLM 5.3 and Qwen3.5 9B on 2026-11-14.) Without the guide, models tried the idc-index
+package (it needs a program that cannot run in the browser) or IDC's web APIs and ran out of
+steps. With it, MiniMax and Qwen3.8 Flash had loaded and shown the right MRI, then used their
+remaining steps on the slice views without answering; Qwen3.5 9B counted the series once and twice
+loaded Slicer's own prostate sample instead of IDC data.
 
 The Chrome profile keeps the downloaded model weights, so reuse it between runs. The same
 runner works for remote models (`--provider remote:openrouter`, after saving a key in that
